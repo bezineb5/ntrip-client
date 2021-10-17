@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sync"
 
@@ -102,7 +103,8 @@ func (c *ntripMountPointClient) Stream() (<-chan []byte, error) {
 			default:
 				line, err := buf.ReadBytes('\n')
 				if err != nil {
-					break
+					log.Println("Error in reading mountpoint", err)
+					return
 				}
 
 				if len(line) > 0 {

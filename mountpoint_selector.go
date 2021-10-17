@@ -31,21 +31,23 @@ type registrySelector struct {
 	refMountpoint string
 	refRtcm       input.RtcmInput
 
-	mu             sync.Mutex
-	newMountpoints chan input.RtcmInput
-	stop           chan struct{}
+	mu                  sync.Mutex
+	newMountpoints      chan input.RtcmInput
+	stop                chan struct{}
+	consecutiveFailures int
 }
 
 func NewRegistrySelector(registry Registry, significantChange float32) Selector {
 	return &registrySelector{
 		registry: registry,
 
-		significantChange: significantChange,
-		refLat:            0,
-		refLng:            0,
-		refMountpoint:     "",
-		refRtcm:           nil,
-		newMountpoints:    make(chan input.RtcmInput, 1),
+		significantChange:   significantChange,
+		refLat:              0,
+		refLng:              0,
+		refMountpoint:       "",
+		refRtcm:             nil,
+		newMountpoints:      make(chan input.RtcmInput, 1),
+		consecutiveFailures: 0,
 	}
 }
 
@@ -63,7 +65,7 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 	s.stop = make(chan struct{})
 	ch := make(chan []byte, 4)
 
-	go func(sc <-chan struct{}) {
+	go func(sc <-chan struct{}, newMountpoints <-chan input.RtcmInput) {
 		defer close(ch)
 
 		currentRtcm := s.refRtcm
@@ -79,12 +81,15 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 		for {
 			select {
 			case <-sc:
+				// Stop streaming
 				return
-			case mp := <-s.newMountpoints:
+			case mp := <-newMountpoints:
+				// Listen to a new mountpoint
 				if currentRtcm != nil {
 					currentRtcm.Close()
 				}
 				currentRtcm = mp
+				s.consecutiveFailures = 0
 
 				if mp != nil {
 					currentMountpoint, err = mp.Stream()
@@ -94,11 +99,26 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 				} else {
 					currentMountpoint = nil
 				}
-			case data := <-currentMountpoint:
-				ch <- data
+			case data, ok := <-currentMountpoint:
+				// RTCM data received from mountpoint
+				if ok {
+					ch <- data
+				} else {
+					// The mountpoint stopped its channel. Do something about it!
+					currentMountpoint = nil
+					s.consecutiveFailures += 1
+
+					// Try reconnecting
+					if currentRtcm != nil {
+						currentMountpoint, err = currentRtcm.Stream()
+						if err != nil {
+							log.Println("Error in streaming mountpoint", err)
+						}
+					}
+				}
 			}
 		}
-	}(s.stop)
+	}(s.stop, s.newMountpoints)
 
 	return ch, nil
 }
@@ -130,6 +150,7 @@ func (s *registrySelector) SetLocation(lat float32, lng float32) error {
 	}
 
 	// Update the mountpoint without breaking the stream
+	log.Printf("Selected mountpoint: %s at distance %f m", nearestMP, nearests[0].distanceInM)
 	client := input.NewNtripV2MountPointClient(nearestMP)
 	s.refMountpoint = nearestMP
 
