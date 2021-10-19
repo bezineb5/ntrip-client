@@ -25,6 +25,11 @@ func (o *writerOutput) Stream(input <-chan []byte) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
+	// First release the current continuous streaming if there is one
+	if o.stop != nil {
+		o.stop <- struct{}{}
+		o.stop = nil
+	}
 	o.stop = make(chan struct{})
 
 	go func(s <-chan struct{}) {
@@ -42,6 +47,14 @@ func (o *writerOutput) Stream(input <-chan []byte) error {
 }
 
 func (o *writerOutput) Close() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.stop != nil {
+		o.stop <- struct{}{}
+		o.stop = nil
+	}
+
 	if o.writer != nil {
 		oldWriter := o.writer
 		o.writer = nil
