@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bezineb5/ntrip-client/input"
 	"github.com/chewxy/math32"
@@ -18,6 +19,7 @@ type Selector interface {
 	io.Closer
 	Stream() (<-chan []byte, error)
 	SetLocation(lat float32, lng float32) error
+	Invalidate() error
 }
 
 type registrySelector struct {
@@ -26,6 +28,7 @@ type registrySelector struct {
 	significantChange float32
 
 	// Mutable.
+	invalidated   atomic.Bool
 	refLat        float32
 	refLng        float32
 	refMountpoint string
@@ -124,13 +127,14 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 }
 
 func (s *registrySelector) SetLocation(lat float32, lng float32) error {
-	if math32.Abs(lat-s.refLat) <= s.significantChange &&
+	if !s.invalidated.Load() && math32.Abs(lat-s.refLat) <= s.significantChange &&
 		math32.Abs(lng-s.refLng) <= s.significantChange {
 
 		// No significant change
 		return nil
 	}
 
+	s.invalidated.Store(false)
 	s.refLat = lat
 	s.refLng = lng
 
@@ -169,5 +173,10 @@ func (s *registrySelector) Close() error {
 		s.stop <- struct{}{}
 		s.stop = nil
 	}
+	return nil
+}
+
+func (s *registrySelector) Invalidate() error {
+	s.invalidated.Store(true)
 	return nil
 }
