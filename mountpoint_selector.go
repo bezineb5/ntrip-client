@@ -144,7 +144,7 @@ func (s *registrySelector) SetLocation(lat float32, lng float32) error {
 		return err
 	}
 	if len(nearests) <= 0 {
-		return errors.New("No station found nearby")
+		return errors.New("no station found nearby")
 	}
 
 	nearestMP := nearests[0].mountpoint
@@ -178,5 +178,8 @@ func (s *registrySelector) Close() error {
 
 func (s *registrySelector) Invalidate() error {
 	s.invalidated.Store(true)
+	if s.refLat != 0 && s.refLng != 0 {
+		return s.SetLocation(s.refLat, s.refLng)
+	}
 	return nil
 }
