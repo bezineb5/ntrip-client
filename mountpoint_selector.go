@@ -3,7 +3,7 @@ package ntrip_client
 import (
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -77,7 +77,7 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 
 		if currentRtcm != nil {
 			if currentMountpoint, err = s.refRtcm.Stream(); err != nil {
-				log.Println("Error in streaming mountpoint", err)
+				slog.Error("Error in streaming mountpoint", slog.Any("error", err))
 			}
 		}
 
@@ -97,7 +97,7 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 				if mp != nil {
 					currentMountpoint, err = mp.Stream()
 					if err != nil {
-						log.Println("Error in streaming mountpoint", err)
+						slog.Error("Error in streaming new mountpoint", slog.Any("error", err))
 					}
 				} else {
 					currentMountpoint = nil
@@ -115,7 +115,7 @@ func (s *registrySelector) Stream() (<-chan []byte, error) {
 					if currentRtcm != nil {
 						currentMountpoint, err = currentRtcm.Stream()
 						if err != nil {
-							log.Println("Error in streaming mountpoint", err)
+							slog.Error("Error in streaming current mountpoint", slog.Any("error", err))
 						}
 					}
 				}
@@ -154,7 +154,7 @@ func (s *registrySelector) SetLocation(lat float32, lng float32) error {
 	}
 
 	// Update the mountpoint without breaking the stream
-	log.Printf("Selected mountpoint: %s at distance %f m", nearestMP, nearests[0].distanceInM)
+	slog.Info("Switching to new mountpoint", slog.String("mountpoint", nearestMP), slog.Float64("distance", float64(nearests[0].distanceInM)))
 	client := input.NewNtripV2MountPointClient(nearestMP)
 	s.refMountpoint = nearestMP
 

@@ -3,8 +3,8 @@ package input
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -44,7 +44,7 @@ func (c *ntripClient) SourceTable() (ntrip.Sourcetable, error) {
 		return ntrip.Sourcetable{}, fmt.Errorf("received non-200 response code: %d", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ntrip.Sourcetable{}, err
 	}
@@ -103,7 +103,7 @@ func (c *ntripMountPointClient) Stream() (<-chan []byte, error) {
 			default:
 				line, err := buf.ReadBytes('\n')
 				if err != nil {
-					log.Println("Error in reading mountpoint", err)
+					slog.Error("Error in reading mountpoint", slog.Any("error", err))
 					return
 				}
 
